@@ -1,0 +1,50 @@
+sequenceDiagram
+    autonumber
+    actor Comp as Compradora
+    actor Vend as Vendedora
+    participant T as Transacao
+    participant P as Pagamento
+    participant G as GatewayPagamento
+    participant M as MtrService
+    participant N as NotificacaoService
+
+    Note over Comp,T: Pré-condição: Negociacao em Pronto para Liquidação
+    Comp->>T: iniciarLiquidacao()
+    T->>P: processar()
+    P->>G: criarCobrancaEscrow(valor, forma)
+    G-->>P: CobrancaEscrowDTO
+    P-->>T: true
+    T-->>Comp: CobrancaResponseDTO
+
+    Note over Comp,G: A compradora paga por Pix ou Boleto
+    G-)T: receberEventoEscrow(EventoEscrowDTO)
+
+    alt evento.status == RETIDO
+        T->>T: confirmarPagamento()
+        T-)N: notificar(compradora, EscrowRetidoResponseDTO)
+        par Emissão do MTR
+            T->>M: emitirMtr(codigoLote)
+            M-->>T: MtrDTO
+        and Liberação da carga
+            T->>T: liberarCarga()
+            T-)N: notificar(vendedora, MSG_DESPACHAR)
+        end
+        Vend->>T: registrarDespacho(MtrDTO)
+        Comp->>T: registrarChegada(pesoConferido)
+        Comp->>T: confirmarRecebimento(AtesteRecebimentoDTO)
+        alt ateste.conforme == true
+            T->>P: liberarEscrow()
+            P->>G: liberarCustodia(escrowId, taxaPlataforma)
+            G-->>P: LiberacaoDTO
+            P-->>T: void
+            T->>T: concluir()
+            T-->>Comp: ConclusaoResponseDTO
+        else ateste.conforme == false
+            T->>T: abrirDisputa(motivo)
+            T-)N: notificar(administrador, MSG_DISPUTA)
+        end
+    else evento.status == RECUSADO
+        T->>P: estornar()
+        T->>T: cancelar(motivo)
+        T-)N: notificar(compradora, MSG_PAGAMENTO_RECUSADO)
+    end
