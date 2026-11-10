@@ -1,0 +1,74 @@
+flowchart TB
+    classDef ini fill:#000,stroke:#000,color:#fff
+    classDef bar fill:#000,stroke:#000,color:#fff,font-weight:bold
+    classDef fim fill:#fff,stroke:#000,stroke-width:3px
+    classDef dec fill:#fff7d6,stroke:#b58900,color:#000
+
+    inicio(("●")):::ini
+
+    subgraph R1["Raia 1 · Indústria Compradora"]
+        a1["Confirmar fechamento da transação"]
+        a4["Pagar cobrança via Pix ou Boleto"]
+        a14["registrarChegada(pesoConferido)"]
+        a15["confirmarRecebimento(ateste)"]
+    end
+
+    subgraph R2["Raia 2 · Indústria Vendedora"]
+        a11["Receber aviso para despachar"]
+        a13["registrarDespacho(MtrDTO)"]
+    end
+
+    subgraph R3["Raia 3 · Back-End Marketplace"]
+        a2["iniciarLiquidacao(): criar Transacao"]
+        a3["Pagamento.processar()"]
+        a6["receberEventoEscrow(EventoEscrowDTO)"]
+        d1{"evento.status?"}:::dec
+        a7["confirmarPagamento()"]
+        fork1["━━━ FORK ━━━"]:::bar
+        a9["liberarCarga()"]
+        a10["Vincular MtrDTO à Transacao"]
+        join1["━━━ JOIN ━━━"]:::bar
+        d2{"ateste.conforme?"}:::dec
+        a16["Pagamento.liberarEscrow()"]
+        a18["concluir()"]
+        a19["abrirDisputa(motivo)"]
+        d3{"decisao?"}:::dec
+        a22["Pagamento.estornar()"]
+        a23["cancelar(motivo)"]
+    end
+
+    subgraph R4["Raia 4 · Gateway de Pagamento + Escrow"]
+        a3b["criarCobrancaEscrow(valor, forma)"]
+        a5["Reter valor em custódia e emitir evento"]
+        a17["liberarCustodia(escrowId, taxaPlataforma)"]
+    end
+
+    subgraph R5["Raia 5 · SINIR / MTR Digital"]
+        a8["emitirMtr(codigoLote)"]
+    end
+
+    subgraph R6["Raia 6 · Administrador"]
+        a20["resolverDisputa(decisao)"]
+    end
+
+    fimOk(["◉ Fim: ConcluidaComSucesso"]):::fim
+    fimEst(["◉ Fim: Estornada"]):::fim
+
+    inicio --> a1 --> a2 --> a3 --> a3b --> a4 --> a5 --> a6 --> d1
+
+    d1 -->|"[evento.status == RETIDO]"| a7 --> fork1
+    d1 -->|"[evento.status == RECUSADO]"| a22
+
+    fork1 --> a8 --> a10 --> join1
+    fork1 --> a9 --> a11 --> join1
+
+    join1 --> a13 --> a14 --> a15 --> d2
+
+    d2 -->|"[ateste.conforme == true]"| a16
+    d2 -->|"[ateste.conforme == false]"| a19 --> a20 --> d3
+
+    d3 -->|"[decisao == LIBERAR]"| a16
+    d3 -->|"[decisao == ESTORNAR]"| a22
+
+    a16 --> a17 --> a18 --> fimOk
+    a22 --> a23 --> fimEst
