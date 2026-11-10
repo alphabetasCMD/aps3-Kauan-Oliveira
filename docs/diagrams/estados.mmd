@@ -1,0 +1,49 @@
+stateDiagram-v2
+    state fork_liquidacao <<fork>>
+    state join_liquidacao <<join>>
+
+    [*] --> AguardandoPagamentoEscrow : iniciarLiquidacao() [negociacao.status == PRONTO_PARA_LIQUIDACAO] / processar()
+
+    state AguardandoPagamentoEscrow {
+        [*] --> CobrancaEmitida
+        CobrancaEmitida : CobrancaEmitida
+        CobrancaEmitida : entry / criarCobrancaEscrow(valor, forma)
+        CobrancaEmitida --> AguardandoWebhook : cobrancaCriada
+        AguardandoWebhook : AguardandoWebhook
+        AguardandoWebhook : do / aguardarEventoGateway()
+    }
+
+    AguardandoPagamentoEscrow --> PagamentoCustodiado : receberEventoEscrow(RETIDO) [valorRetido == valorTotal] / confirmarPagamento()
+    AguardandoPagamentoEscrow --> Estornada : receberEventoEscrow(RECUSADO) / estornar(), cancelar(motivo)
+
+    PagamentoCustodiado : PagamentoCustodiado
+    PagamentoCustodiado : entry / notificar(compradora, EscrowRetidoResponseDTO)
+    PagamentoCustodiado --> fork_liquidacao
+
+    fork_liquidacao --> EmitindoMtr
+    fork_liquidacao --> LiberandoCarga
+
+    EmitindoMtr : EmitindoMtr
+    EmitindoMtr : entry / emitirMtr(codigoLote)
+    LiberandoCarga : LiberandoCarga
+    LiberandoCarga : entry / liberarCarga()
+    EmitindoMtr --> join_liquidacao : MtrDTO recebido
+    LiberandoCarga --> join_liquidacao : vendedora notificada
+
+    join_liquidacao --> CargaLiberada
+
+    CargaLiberada --> CargaEmTransporte : registrarDespacho(MtrDTO) [mtr.valido == true]
+    CargaEmTransporte --> EntregueEmAnalise : registrarChegada(pesoConferido)
+
+    EntregueEmAnalise : EntregueEmAnalise
+    EntregueEmAnalise : do / aguardarAtesteCompradora()
+    EntregueEmAnalise --> ConcluidaComSucesso : confirmarRecebimento(ateste) [ateste.conforme == true] / liberarEscrow(), concluir()
+    EntregueEmAnalise --> EmDisputaQualidade : confirmarRecebimento(ateste) [ateste.conforme == false] / abrirDisputa(motivo)
+
+    EmDisputaQualidade : EmDisputaQualidade
+    EmDisputaQualidade : entry / notificar(administrador, MSG_DISPUTA)
+    EmDisputaQualidade --> ConcluidaComSucesso : resolverDisputa(decisao) [decisao == LIBERAR] / liberarEscrow(), concluir()
+    EmDisputaQualidade --> Estornada : resolverDisputa(decisao) [decisao == ESTORNAR] / estornar(), cancelar(motivo)
+
+    ConcluidaComSucesso --> [*]
+    Estornada --> [*]
