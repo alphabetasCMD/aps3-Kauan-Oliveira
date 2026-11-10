@@ -1,0 +1,34 @@
+flowchart TB
+    classDef pessoa fill:#08427b,stroke:#052e56,color:#fff
+    classDef cont fill:#438dd5,stroke:#2e6295,color:#fff
+    classDef ext fill:#8a8a8a,stroke:#5e5e5e,color:#fff
+
+    comp(["<b>Indústria Compradora</b><br/>[Person]"]):::pessoa
+    vend(["<b>Indústria Vendedora</b><br/>[Person]"]):::pessoa
+    adm(["<b>Administrador</b><br/>[Person]"]):::pessoa
+
+    subgraph MKT["Marketplace B2B de Sobras Industriais [System Boundary]"]
+        web["<b>Aplicação Web</b><br/>[Container: Next.js 14 / React]"]:::cont
+        api["<b>API de Transações</b><br/>[Container: Java 21 / Spring Boot 3]<br/>Transacao, Pagamento, webhook"]:::cont
+        db[("<b>Banco de Dados</b><br/>[Container: PostgreSQL 16 + PostGIS]")]:::cont
+        fila[["<b>Fila de Eventos</b><br/>[Container: RabbitMQ 3.13]<br/>escrow.eventos e DLQ"]]:::cont
+        worker["<b>Worker de Liquidação</b><br/>[Container: Java 21 / Spring Boot 3]<br/>Eventos, MTR e custódia"]:::cont
+    end
+
+    gw["<b>Gateway de Pagamento + Escrow</b><br/>[External System]"]:::ext
+    sinir["<b>SINIR / MTR Digital</b><br/>[External System]"]:::ext
+    notif["<b>Serviço de Notificações</b><br/>[External System]"]:::ext
+
+    comp -->|"1 · HTTPS"| web
+    vend -->|"2 · HTTPS"| web
+    adm -->|"3 · HTTPS"| web
+    web -->|"4 · REST/JSON, HTTPS"| api
+    api -->|"5 · JDBC/SQL"| db
+    api -->|"6 · AMQP 0-9-1"| fila
+    worker -->|"7 · AMQP 0-9-1"| fila
+    worker -->|"8 · JDBC/SQL"| db
+    api -->|"9 · REST, HTTPS"| gw
+    gw -->|"10 · Webhook HTTPS + HMAC"| api
+    worker -->|"11 · REST, HTTPS"| gw
+    worker -->|"12 · REST/JSON, HTTPS"| sinir
+    worker -->|"13 · REST, HTTPS"| notif

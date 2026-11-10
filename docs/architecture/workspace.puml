@@ -1,0 +1,35 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+title Diagrama de Contêineres (C4 Nível 2) - Pagamento em Escrow do Marketplace B2B
+
+Person(comp, "Indústria Compradora", "Paga a cobrança e atesta o recebimento")
+Person(vend, "Indústria Vendedora", "Despacha o lote após a custódia")
+Person(adm, "Administrador", "Media disputas de qualidade")
+
+System_Boundary(mkt, "Marketplace B2B de Sobras Industriais") {
+    Container(web, "Aplicação Web", "Next.js 14 / React", "Telas de liquidação, despacho e ateste")
+    Container(api, "API de Transações", "Java 21 / Spring Boot 3", "Transacao, Pagamento, MtrService. Recebe o webhook do gateway")
+    Container(worker, "Worker de Liquidação", "Java 21 / Spring Boot 3", "Consome eventos de Escrow, emite MTR e libera custódia")
+    ContainerQueue(fila, "Fila de Eventos", "RabbitMQ 3.13", "Filas escrow.eventos e notificacoes, com DLQ")
+    ContainerDb(db, "Banco de Dados", "PostgreSQL 16 + PostGIS", "Transacao, Pagamento e histórico de destinação")
+}
+
+System_Ext(gw, "Gateway de Pagamento + Escrow", "Cobrança Pix/Boleto e custódia do valor")
+System_Ext(sinir, "SINIR / MTR Digital", "Emite o Manifesto de Transporte de Resíduos")
+System_Ext(notif, "Serviço de Notificações", "E-mail e WhatsApp/SMS")
+
+Rel(comp, web, "Usa", "HTTPS")
+Rel(vend, web, "Usa", "HTTPS")
+Rel(adm, web, "Usa o painel", "HTTPS")
+Rel(web, api, "Chama iniciarLiquidacao, registrarDespacho, registrarChegada, confirmarRecebimento", "REST/JSON sobre HTTPS")
+Rel(api, db, "Lê e grava", "JDBC/SQL (TCP 5432)")
+Rel(api, gw, "criarCobrancaEscrow", "REST sobre HTTPS")
+Rel(gw, api, "Envia eventos do Escrow (webhook com assinatura HMAC)", "HTTPS")
+Rel(api, fila, "Publica EventoEscrowDTO", "AMQP 0-9-1")
+Rel(worker, fila, "Consome eventos", "AMQP 0-9-1")
+Rel(worker, db, "Atualiza estado da Transacao", "JDBC/SQL (TCP 5432)")
+Rel(worker, sinir, "emitirMtr", "REST/JSON sobre HTTPS")
+Rel(worker, gw, "liberarCustodia", "REST sobre HTTPS")
+Rel(worker, notif, "notificar", "REST sobre HTTPS")
+@enduml
